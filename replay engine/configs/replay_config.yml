@@ -1,0 +1,38 @@
+# Replay Engine Configuration
+
+# Redis Configuration
+redis:
+  url: "redis://localhost:6379"
+  stream_key: "logs:stream"
+  consumer_group: "replay_group"
+  consumer_name: "replay_engine"
+  
+# Replay Settings
+replay:
+  checkpoint_every: 100  # Checkpoint every N events
+  max_events_per_batch: 1000
+  default_speed: 1.0
+  max_replay_duration_hours: 24
+  
+# Timing Configuration
+timing:
+  real_time_mode: true
+  fixed_speed_mode: false
+  dry_run_mode: false
+  
+# Bug Detection
+bug_detection:
+  error_levels: ["ERROR", "FATAL", "CRITICAL"]
+  gap_threshold_seconds: 300  # 5 minutes
+  correlation_timeout_hours: 1
+  
+# Output Configuration
+output:
+  reports_dir: "reports"
+  checkpoint_dir: "checkpoints"
+  log_level: "INFO"
+  
+# Security
+security:
+  shared_token: "mysecret"
+  enable_auth: true

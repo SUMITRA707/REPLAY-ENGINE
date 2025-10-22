@@ -1,0 +1,31 @@
+replay-engine/
+├── deploy/
+│   └── docker-compose.dev.yml
+├── configs/
+│   └── replay_config.yml
+├── src/
+│   ├── api/
+│   │   ├── ingest_api.py  # Optional, so create if needed
+│   │   └── control_api.py
+│   ├── adapters/
+│   │   ├── redis_stream_adapter.py
+│   │   └── file_adapter.py
+│   ├── replay/
+│   │   ├── deterministic_replayer.py
+│   │   ├── checkpoint_store.py
+│   │   ├── session_manager.py
+│   │   └── bug_detector.py
+│   ├── common/
+│   │   ├── logging_config.py
+│   │   └── metrics.py
+│   └── runner.py
+├── scripts/
+│   └── snapshot_db.sh
+├── tests/
+│   ├── unit/
+│   │   └── test_merged_stream.py
+│   └── integration/
+│       └── test_replay_with_redis.py
+├── Dockerfile
+├── docker-compose.yml  # Note: This might be the same as deploy/docker-compose.dev.yml; adjust as needed
+└── README.md
