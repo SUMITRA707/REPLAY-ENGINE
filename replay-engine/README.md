@@ -22,4 +22,3 @@ This project consists of two main components:
 - **CLI Interface**: Command-line tool for replay operations
 - **REST API**: FastAPI-based control API for integration
 
-# (Note: Full README from document here - copy the entire markdown block from the human message.)
