@@ -1,0 +1,34 @@
+services:
+  replay-engine:
+    build: .
+    ports:
+      - "8000:8000"
+      - "8050:8050"
+    environment:
+      - REDIS_URL=redis://universal-logging-redis:6379
+      - REDIS_HOST=universal-logging-redis
+      - REDIS_PORT=6379
+      - STREAM_KEY=logs:stream
+    networks:
+      - universal-logging-hook-microservice_logging-network
+    volumes:
+      - .:/app
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - universal-logging-hook-microservice_logging-network
+    depends_on:
+      - replay-engine
+
+volumes:
+  grafana-data:
+
+networks:
+  universal-logging-hook-microservice_logging-network:
+    external: true

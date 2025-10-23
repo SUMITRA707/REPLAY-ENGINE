@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Replay Reports Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style> body { font-family: Arial; } #chart { width: 100px; height: 50px; } </style>
+</head>
+<body>
+    <h1>Replay Engine Dashboard</h1>
+    <button onclick="startReplay()">Start New Replay</button>
+    <button onclick="stopReplay()">Stop</button>
+    <div id="status">Status: Idle</div>
+    <canvas id="progressChart"></canvas>
+    <div id="report"></div>
+
+    <script>
+        let chart, currentReplayId;
+        async function startReplay() {
+            const resp = await fetch('/start', {method: 'POST'});
+            const data = await resp.json();
+            if (data.replay_id) {
+                currentReplayId = data.replay_id;
+                document.getElementById('status').innerText = `Started: ${data.replay_id}`;
+                updateStatus();
+                setInterval(updateStatus, 2000);  // Poll every 2s
+            }
+        }
+        async function stopReplay() {
+            if (currentReplayId) {
+                // Call stop API
+                await fetch('/stop', {method: 'POST'});
+                document.getElementById('status').innerText = 'Stopped';
+            }
+        }
+        async function updateStatus() {
+            if (!currentReplayId) return;
+            const resp = await fetch(`/status/${currentReplayId}`);
+            const data = await resp.json();
+            document.getElementById('status').innerText = `Progress: ${Math.round(data.progress * 100)}% | Events: ${data.events_processed}`;
+            
+            // Update chart
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            if (!chart) {
+                chart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: { labels: ['Processed', 'Remaining'], datasets: [{ data: [data.progress * 100, 100 - data.progress * 100], backgroundColor: ['#4CAF50', '#FF9800'] }] }
+                });
+            } else {
+                chart.data.datasets[0].data = [data.progress * 100, 100 - data.progress * 100];
+                chart.update();
+            }
+            
+            // Load report
+            const reportResp = await fetch(`/report/${currentReplayId}`);
+            if (reportResp.ok) {
+                const report = await reportResp.json();
+                document.getElementById('report').innerHTML = `<h3>Report for ${currentReplayId}</h3><pre>${JSON.stringify(report, null, 2)}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>
