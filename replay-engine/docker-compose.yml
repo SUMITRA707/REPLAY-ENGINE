@@ -1,4 +1,3 @@
-
 services:
   replay-engine:
     build:
@@ -9,11 +8,10 @@ services:
       - "8000:8000"
       - "8050:8050"
     environment:
-      # CRITICAL: Connect to existing Redis from logging hook
-      - REDIS_URL=redis://:mysecret@universal-logging-redis:6379
+      # CRITICAL: No password needed for universal-logging-redis
+      - REDIS_URL=redis://universal-logging-redis:6379
       - STREAM_KEY=logs:stream
       - REPLAY_SHARED_TOKEN=mysecret
-    # CRITICAL: Join the logging hook's network
     networks:
       - universal-logging-hook-microservice_logging-network
     restart: unless-stopped
@@ -54,8 +52,9 @@ services:
     networks:
       - universal-logging-hook-microservice_logging-network
     restart: unless-stopped
+    depends_on:
+      - prometheus
 
-# CRITICAL: Use external network from logging hook
 networks:
   universal-logging-hook-microservice_logging-network:
     external: true
