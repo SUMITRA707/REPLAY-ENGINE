@@ -1,34 +1,65 @@
+
 services:
   replay-engine:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: replay-engine
     ports:
       - "8000:8000"
       - "8050:8050"
     environment:
-      - REDIS_URL=redis://universal-logging-redis:6379
-      - REDIS_HOST=universal-logging-redis
-      - REDIS_PORT=6379
+      # CRITICAL: Connect to existing Redis from logging hook
+      - REDIS_URL=redis://:mysecret@universal-logging-redis:6379
       - STREAM_KEY=logs:stream
+      - REPLAY_SHARED_TOKEN=mysecret
+    # CRITICAL: Join the logging hook's network
     networks:
       - universal-logging-hook-microservice_logging-network
+    restart: unless-stopped
     volumes:
-      - .:/app
+      - ./reports:/app/reports
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: replay-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - universal-logging-hook-microservice_logging-network
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
+    container_name: replay-grafana
     ports:
       - "3002:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
     volumes:
       - grafana-data:/var/lib/grafana
     networks:
       - universal-logging-hook-microservice_logging-network
-    depends_on:
-      - replay-engine
+    restart: unless-stopped
 
-volumes:
-  grafana-data:
-
+# CRITICAL: Use external network from logging hook
 networks:
   universal-logging-hook-microservice_logging-network:
     external: true
+
+volumes:
+  prometheus-data:
+  grafana-data:

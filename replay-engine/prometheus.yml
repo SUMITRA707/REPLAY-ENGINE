@@ -1,0 +1,10 @@
+﻿global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'replay-engine'
+    static_configs:
+      - targets: ['replay-engine:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s

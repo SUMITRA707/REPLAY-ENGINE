@@ -1,0 +1,11 @@
+{
+  "replay_id": "r-7755027f",
+  "status": "completed",
+  "events_processed": 6,
+  "total_events": 6,
+  "progress": 1.0,
+  "started_at": "2025-10-23T19:40:50.482590+00:00",
+  "completed_at": "2025-10-23T19:40:50.496658Z",
+  "bugs_detected": [],
+  "events": []
+}
