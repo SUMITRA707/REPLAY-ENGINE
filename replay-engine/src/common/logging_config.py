@@ -89,10 +89,18 @@ class ReplayLogger:
         extra = {**self._extra, **kwargs}
         self.logger.info(message, extra=extra)
     
-    def error(self, message: str, **kwargs):
-        """Log error message with replay context"""
-        extra = {**self._extra, **kwargs}
-        self.logger.error(message, extra=extra)
+    def error(self, message: str, exc_info: bool = False):
+        """Log error message (FIXED - removed exc_info from extra)"""
+        extra = {
+            "replay_id": self.replay_id,
+            "session_id": self.session_id,
+            "component": self.component
+        }
+        # CRITICAL FIX: Don't pass exc_info in extra dict
+        if exc_info:
+            self.logger.error(message, extra=extra, exc_info=True)
+        else:
+            self.logger.error(message, extra=extra)
     
     def warning(self, message: str, **kwargs):
         """Log warning message with replay context"""

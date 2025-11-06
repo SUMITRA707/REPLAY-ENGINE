@@ -1,0 +1,11 @@
+{
+  "replay_id": "r-a6bb77ca",
+  "status": "completed",
+  "events_processed": 5,
+  "total_events": 5,
+  "progress": 1.0,
+  "started_at": "2025-11-05T14:53:37.184958+00:00",
+  "completed_at": "2025-11-05T14:53:37.220474Z",
+  "bugs_detected": [],
+  "events": []
+}

@@ -1,12 +1,14 @@
-from fastapi import FastAPI, HTTPException, Query, Depends, Response # type: ignore
-from fastapi.security import HTTPBearer # type: ignore
+from fastapi import FastAPI, HTTPException, Query, Depends, Response
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 import yaml
-import redis.asyncio as redis # type: ignore
+import redis.asyncio as redis
 import asyncio
 import uuid
 import os
+from datetime import datetime
+
 from ..replay.deterministic_replayer import DeterministicReplayer
 from ..replay.session_manager import SessionManager
 from ..replay.checkpoint_store import CheckpointStore
@@ -14,16 +16,14 @@ from ..adapters.redis_stream_adapter import RedisStreamAdapter
 from ..common.metrics import get_metrics
 from ..common.logging_config import ReplayLogger
 
-# FastAPI app setup
 app = FastAPI(title="Replay Control API")
 security = HTTPBearer()
 
-# Load configuration
+# === CONFIG ===
 try:
     with open("configs/replay_config.yml", "r") as f:
         config = yaml.safe_load(f)
 except FileNotFoundError:
-    # Fallback config if file not found
     config = {
         "redis": {
             "url": os.getenv("REDIS_URL", "redis://localhost:6379"),
@@ -37,11 +37,10 @@ except FileNotFoundError:
         }
     }
 
-# Override with environment variables if present
 config["redis"]["url"] = os.getenv("REDIS_URL", config["redis"]["url"])
 config["redis"]["stream_key"] = os.getenv("STREAM_KEY", config["redis"]["stream_key"])
 
-# Initialize components
+# === INIT ===
 redis_client = redis.Redis.from_url(config["redis"]["url"])
 redis_adapter = RedisStreamAdapter(
     redis_url=config["redis"]["url"],
@@ -53,12 +52,12 @@ checkpoint_store = CheckpointStore(redis_client)
 session_manager = SessionManager()
 logger = ReplayLogger(__name__)
 
-# Pydantic models
+# === MODELS ===
 class StartRequest(BaseModel):
     session_id: Optional[str] = None
     start_ts: Optional[str] = None
     end_ts: Optional[str] = None
-    mode: str = "dry-run"  # dry-run|live|timed
+    mode: str = "dry-run"
     speed: float = 1.0
 
 class StartResponse(BaseModel):
@@ -76,15 +75,30 @@ class StatusResponse(BaseModel):
     state: str
     progress: float
     events_processed: int
+    bugs_detected: int = 0
+    elapsed_seconds: int = 0
+    current_event_id: Optional[str] = None
+    message: Optional[str] = None
+    current_event_details: Dict[str, Any] = {}
 
-# Dependency for token verification
+# === AUTH ===
 async def verify_token(credentials: HTTPBearer = Depends(security)):
-    token = credentials.credentials
-    if token != "mysecret":
+    if credentials.credentials != "mysecret":
         raise HTTPException(status_code=401, detail="Invalid token")
     return credentials
 
-# Endpoints
+# === STARTUP EVENT - CRITICAL FIX ===
+@app.on_event("startup")
+async def startup_event():
+    """Connect to Redis on startup"""
+    try:
+        logger.info("🔌 Connecting to Redis on startup...")
+        await redis_adapter.connect()
+        logger.info("✅ Redis connected successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to Redis: {e}")
+
+# === ENDPOINTS ===
 @app.get("/health")
 async def health():
     try:
@@ -109,39 +123,51 @@ async def start_replay(request: StartRequest):
             "checkpoint_every": config["replay"]["checkpoint_every"]
         }
         
-        # Create session with config
-        await session_manager.create_session(replay_id, replay_config)
+        # Create session (sync method)
+        session_manager.create_session(replay_id, request.mode)
         
-        # Create replayer
         replayer = DeterministicReplayer(redis_adapter, checkpoint_store, session_manager)
         
-        # Background task with exception handling
         async def run_replay_with_logging():
             try:
+                print(f"🚀 Starting replay {replay_id}...")
                 result = await replayer.execute_replay(replay_config)
-                logger.info(f"Replay {replay_id} finished: {result}")
+                print(f"✅ Replay {replay_id} finished: {result}")
             except Exception as e:
-                logger.error(f"Replay {replay_id} crashed: {e}", exc_info=True)
-                await session_manager.update_session_status(replay_id, "failed")
+                # FIXED: Use print() instead of logger to avoid exc_info conflict
+                print(f"❌ Replay {replay_id} crashed: {e}")
+                import traceback
+                traceback.print_exc()
+                
+                # Update session on crash
+                try:
+                    session = session_manager.sessions.get(replay_id)
+                    if session:
+                        session.status = "failed"
+                        session.message = str(e)
+                except Exception as update_error:
+                    print(f"❌ Failed to update crashed session: {update_error}")
         
         asyncio.create_task(run_replay_with_logging())
         
-        logger.info(f"Started replay {replay_id}")
+        logger.info(f"Replay started: {replay_id}")
         return StartResponse(replay_id=replay_id, status="started")
+        
     except Exception as e:
-        logger.error(f"Failed to start replay: {str(e)}")
+        logger.error(f"Failed to start replay: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/replay/stop", response_model=StopResponse, dependencies=[Depends(verify_token)])
 async def stop_replay(request: StopRequest):
     try:
-        success = await session_manager.update_session_status(request.replay_id, "stopped")
-        if not success:
-            raise HTTPException(status_code=404, detail="Replay session not found")
+        session = session_manager.sessions.get(request.replay_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        session.status = "stopped"
         logger.info(f"Stopped replay {request.replay_id}")
         return StopResponse(status="stopped")
     except Exception as e:
-        logger.error(f"Failed to stop replay: {str(e)}")
+        logger.error(f"Stop failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/replay/status", response_model=StatusResponse, dependencies=[Depends(verify_token)])
@@ -149,16 +175,27 @@ async def get_status(replay_id: str = Query(...)):
     try:
         session = await session_manager.get_session(replay_id)
         if not session:
-            raise HTTPException(status_code=404, detail=f"Replay session '{replay_id}' not found")
+            raise HTTPException(status_code=404, detail="Not found")
+
+        elapsed = int((datetime.now() - session.start_time).total_seconds()) if session.start_time else 0
+        details = getattr(session, "current_event_details", {
+            "method": "GET", "path": "Unknown", "activity": "N/A", "status": "N/A"
+        })
+
         return StatusResponse(
             replay_id=session.replay_id,
             state=session.status,
             progress=session.progress,
-            events_processed=session.events_processed
+            events_processed=session.events_processed,
+            bugs_detected=session.bugs_detected,
+            elapsed_seconds=elapsed,
+            current_event_id=getattr(session, "current_event_id", None),
+            message=getattr(session, "message", None),
+            current_event_details=details
         )
     except Exception as e:
-        logger.error(f"Failed to get status for {replay_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+        logger.error(f"Status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/metrics")
 async def get_prometheus_metrics():

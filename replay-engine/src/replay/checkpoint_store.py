@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 import redis.asyncio as redis # type: ignore
 
-logger = logging.getLogger(__name__)
+from ..common.logging_config import ReplayLogger
+
+logger = ReplayLogger(__name__)
 
 class CheckpointStore:
     """Redis-backed checkpoint store for replay state persistence"""

@@ -2,62 +2,825 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Replay Reports Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style> body { font-family: Arial; } #chart { width: 100px; height: 50px; } </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Replay Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            color: #e2e8f0;
+            font-family: 'Poppins', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 16px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(56, 189, 248, 0.4);
+            box-shadow: 0 8px 20px rgba(56, 189, 248, 0.2);
+        }
+
+        .status-indicator {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        #status-idle { background: #64748b; }
+        #status-running { 
+            background: #10b981; 
+            animation: pulse-glow 1.5s ease-in-out infinite;
+        }
+        #status-error { background: #ef4444; }
+        #status-completed { background: #3b82f6; }
+
+        @keyframes pulse-glow {
+            0%, 100% { 
+                opacity: 1;
+                box-shadow: 0 0 10px #10b981, 0 0 20px #10b981;
+            }
+            50% { 
+                opacity: 0.5;
+                box-shadow: 0 0 5px #10b981;
+            }
+        }
+
+        .btn {
+            font-weight: 600;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            border: none;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-success:hover {
+            transform: scale(1.03);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            transform: scale(1.03);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
+        }
+
+        .btn-outline-light {
+            border: 2px solid rgba(226, 232, 240, 0.3);
+            color: #e2e8f0;
+            background: transparent;
+        }
+
+        .btn-outline-light:hover {
+            background: rgba(226, 232, 240, 0.1);
+            border-color: #38bdf8;
+            color: #38bdf8;
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .form-select, .form-control {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 0.6rem 0.75rem;
+            font-size: 0.95rem;
+        }
+
+        .form-select:focus, .form-control:focus {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+            color: #e2e8f0;
+        }
+
+        .form-select option {
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+
+        .form-label {
+            color: #cbd5e1 !important;  /* NEW: Explicit !important for all labels */
+            font-weight: 500;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-range {
+            accent-color: #38bdf8;
+        }
+
+        .progress {
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 10px;
+            overflow: hidden;
+            height: 24px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+            transition: width 0.6s ease-in-out;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .metric-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px;
+            padding: 1.2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .metric-card:hover {
+            border-color: rgba(56, 189, 248, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+            text-shadow: 0 2px 10px currentColor;
+        }
+
+        /* NEW: Specific fix for metric subtitles like "processed", "detected", "running time" */
+        .metric-card small,
+        .card small {
+            color: #94a3b8 !important;
+            font-weight: 400;  /* Slightly bolder for readability */
+        }
+
+        .event-log {
+            height: 280px;
+            overflow-y: auto;
+            background: rgba(15, 23, 42, 0.8);
+            padding: 1rem;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .event-log::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .event-log::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 10px;
+        }
+
+        .event-log::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.6);
+            border-radius: 10px;
+        }
+
+        .event-log::-webkit-scrollbar-thumb:hover {
+            background: rgba(56, 189, 248, 0.8);
+        }
+
+        .event-success { color: #10b981; }
+        .event-error { color: #ef4444; }
+        .event-warning { color: #f59e0b; }
+
+        .badge-pulse {
+            animation: badge-pulse 2s ease-in-out infinite;
+            box-shadow: 0 0 15px currentColor;
+        }
+
+        @keyframes badge-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+
+        .connection-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+            box-shadow: 0 0 8px currentColor;
+        }
+
+        .conn-success { background: #10b981; }
+        .conn-error { 
+            background: #ef4444; 
+            animation: blink-error 1s infinite;
+        }
+
+        @keyframes blink-error {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .speed-value {
+            text-align: center;
+            margin-top: 0.5rem;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #38bdf8;
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+        }
+
+        .header-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #38bdf8;
+            text-shadow: 0 2px 10px rgba(56, 189, 248, 0.4);
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge {
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* ENHANCED: Global override for all muted/secondary text */
+        small.text-muted,
+        .text-muted {
+            color: #94a3b8 !important;
+        }
+
+        .text-info {
+            color: #38bdf8 !important;
+        }
+
+        .text-success {
+            color: #10b981 !important;
+        }
+
+        /* NEW: Placeholder text fix for inputs */
+        ::placeholder {
+            color: #64748b !important;
+            opacity: 1 !important;
+        }
+
+        .form-control::placeholder {
+            color: #64748b !important;
+        }
+
+        .session-item {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            transition: all 0.3s ease;
+        }
+
+        .session-item:hover {
+            border-color: rgba(56, 189, 248, 0.4);
+            transform: translateX(5px);
+        }
+
+        h5 {
+            color: #e2e8f0;
+            font-weight: 600;
+        }
+
+        .spinner-border-sm {
+            width: 1.2rem;
+            height: 1.2rem;
+            border-width: 2px;
+        }
+
+        /* Mobile Responsiveness Enhancements */
+        @media (max-width: 768px) {
+            .header-title { font-size: 1.5rem; }
+            .metric-value { font-size: 2rem; }
+            .event-log { height: 200px; }
+        }
+    </style>
 </head>
 <body>
-    <h1>Replay Engine Dashboard</h1>
-    <button onclick="startReplay()">Start New Replay</button>
-    <button onclick="stopReplay()">Stop</button>
-    <div id="status">Status: Idle</div>
-    <canvas id="progressChart"></canvas>
-    <div id="report"></div>
+    <div class="container-fluid py-4">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="header-title">
+                <i class="fa-solid fa-tower-broadcast me-2"></i>
+                Replay Dashboard  <!-- FIXED: Clean title, no "8050" -->
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <div class="status-badge">
+                    <span class="status-indicator" id="status-indicator"></span>
+                    <span id="status-text" style="color: #e2e8f0;">Idle</span>
+                </div>
+                <div class="d-flex gap-3">
+                    <span style="color: #e2e8f0;">
+                        <span class="connection-dot" id="conn-api-dot"></span>
+                        <span id="conn-api-text">API</span>
+                    </span>
+                    <span style="color: #e2e8f0;">
+                        <span class="connection-dot" id="conn-redis-dot"></span>
+                        <span id="conn-redis-text">Redis</span>
+                    </span>
+                </div>
+            </div>
+        </div>
 
+        <div class="row g-4">
+            <!-- Left Control Panel -->
+            <div class="col-lg-4">
+                <div class="card p-4 mb-3">
+                    <h5 class="mb-4">
+                        <i class="fa fa-sliders me-2" style="color: #38bdf8;"></i>
+                        Controls
+                    </h5>
+                    
+                    <!-- Main Action Buttons -->
+                    <div class="d-grid gap-3 mb-4">
+                        <button class="btn btn-success btn-lg" id="btnStart">
+                            <i class="fa fa-play me-2"></i>
+                            <span id="btnStartText">Start Replay</span>
+                            <span class="spinner-border spinner-border-sm ms-2 d-none" id="startSpinner"></span>
+                        </button>
+                        <button class="btn btn-danger" id="btnStop" disabled>
+                            <i class="fa fa-stop me-2"></i>Stop Replay
+                        </button>
+                    </div>
+
+                    <!-- Configuration -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fa fa-cog me-1"></i>Mode
+                        </label>
+                        <select id="mode" class="form-select">
+                            <option value="dry-run">Dry Run (Fast Test)</option>
+                            <option value="timed">Timed (Real Speed)</option>
+                            <option value="full">Full (Production)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fa fa-gauge-high me-1"></i>Speed Multiplier
+                        </label>
+                        <input type="range" class="form-range" min="1" max="5" value="1" id="speed">
+                        <div class="speed-value"><span id="speedValue">1x</span></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fa fa-hashtag me-1"></i>Event Range (Optional)
+                        </label>
+                        <input type="text" id="eventRange" class="form-control" placeholder="e.g., 100-500">
+                        <small class="text-muted">Leave empty for all events</small>  <!-- FIXED: Muted text visible -->
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fa fa-bookmark me-1"></i>Checkpoint Interval
+                        </label>
+                        <input type="number" id="checkpoint" class="form-control" placeholder="e.g., 100" value="100">
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="d-flex justify-content-between gap-2 mt-4">
+                        <button class="btn btn-outline-light btn-sm" id="btnClear">
+                            <i class="fa fa-trash"></i> Clear
+                        </button>
+                        <button class="btn btn-outline-light btn-sm" id="btnExport">
+                            <i class="fa fa-file-export"></i> Export
+                        </button>
+                        <button class="btn btn-outline-light btn-sm" id="btnReset">
+                            <i class="fa fa-rotate-left"></i> Reset
+                        </button>
+                    </div>
+
+                    <!-- Current Replay ID -->
+                    <div class="mt-3">
+                        <label class="form-label">Current Replay ID</label>
+                        <div class="form-control bg-dark" id="currentReplayId" style="color: #e2e8f0; font-family: monospace;">None</div>
+                    </div>
+                </div>
+
+                <!-- Metrics -->  <!-- FIXED: Subtitles now visible gray -->
+                <div class="row g-3 mb-3">
+                    <div class="col-4">
+                        <div class="metric-card">
+                            <div class="metric-value text-success" id="progressPercent">0</div>
+                            <small class="text-muted">Progress</small>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="metric-card">
+                            <div class="metric-value text-info" id="eventsProcessed">0</div>
+                            <small class="text-muted">Events Processed</small>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="metric-card">
+                            <div class="metric-value text-danger" id="bugs">0</div>
+                            <small class="text-muted">Bugs Detected</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="card p-3 mb-3">
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar" id="barProgress" role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                </div>
+
+                <!-- Elapsed Time -->  <!-- FIXED: "running time" visible -->
+                <div class="card p-3">
+                    <div class="metric-card">
+                        <div class="metric-value text-info" id="elapsed">0s</div>
+                        <small class="text-muted">running time</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel -->
+            <div class="col-lg-8">
+                <!-- Live Event Stream -->
+                <div class="card p-4 mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5>
+                            <i class="fa fa-terminal me-2" style="color: #38bdf8;"></i>
+                            Live Event Stream
+                        </h5>
+                        <button class="btn btn-sm btn-outline-light" id="btnClearLog">
+                            <i class="fa fa-eraser"></i> Clear Log
+                        </button>
+                    </div>
+                    <div class="event-log" id="eventLog">
+                        <div class="text-muted text-center py-5">
+                            <i class="fa fa-info-circle me-2"></i>Waiting for replay to start...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Session History -->
+                <div class="card p-4">
+                    <h5 class="mb-3">
+                        <i class="fa fa-history me-2" style="color: #38bdf8;"></i>
+                        Recent Replays
+                    </h5>
+                    <div id="sessionHistory">
+                        <div class="text-muted text-center py-3">No replay sessions yet</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed top-0 end-0 p-3"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        let chart, currentReplayId;
-        async function startReplay() {
-            const resp = await fetch('/start', {method: 'POST'});
-            const data = await resp.json();
-            if (data.replay_id) {
-                currentReplayId = data.replay_id;
-                document.getElementById('status').innerText = `Started: ${data.replay_id}`;
-                updateStatus();
-                setInterval(updateStatus, 2000);  // Poll every 2s
-            }
+        const socket = io();
+        let running = false;
+        let currentReplayId = null;
+        let startTime = null;
+        let timerInterval = null;
+
+        // Toast notification helper
+        function showToast(msg, bg = "bg-success") {
+            const container = document.querySelector(".toast-container");
+            const div = document.createElement("div");
+            div.className = `toast align-items-center text-white ${bg} border-0`;
+            div.setAttribute("role", "alert");
+            div.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${msg}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            container.appendChild(div);
+            const toast = new bootstrap.Toast(div, { delay: 3000 });
+            toast.show();
+            setTimeout(() => div.remove(), 4000);
         }
-        async function stopReplay() {
-            if (currentReplayId) {
-                // Call stop API
-                await fetch('/stop', {method: 'POST'});
-                document.getElementById('status').innerText = 'Stopped';
-            }
-        }
-        async function updateStatus() {
-            if (!currentReplayId) return;
-            const resp = await fetch(`/status/${currentReplayId}`);
-            const data = await resp.json();
-            document.getElementById('status').innerText = `Progress: ${Math.round(data.progress * 100)}% | Events: ${data.events_processed}`;
+
+        // Update status indicator – with null safety
+        function updateStatus(status, text) {
+    const indicator = document.getElementById("status-indicator");
+    if (!indicator) {
+        console.warn("Status indicator not found – DOM not ready? Retrying...");
+        setTimeout(() => updateStatus(status, text), 100);  // Retry after 100ms
+        return;
+    }
+    
+    indicator.className = `status-indicator ${status}`;  // Set class first
+    indicator.id = `status-${status}`;  // Now safe to set ID
+    const statusText = document.getElementById("status-text");
+    if (statusText) {
+        statusText.innerText = text;
+    }
+}
+
+        // Update connection status
+        function updateConnection(api, redis) {
+            const apiDot = document.getElementById("conn-api-dot");
+            const apiText = document.getElementById("conn-api-text");
+            const redisDot = document.getElementById("conn-redis-dot");
+            const redisText = document.getElementById("conn-redis-text");
             
-            // Update chart
-            const ctx = document.getElementById('progressChart').getContext('2d');
-            if (!chart) {
-                chart = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: { labels: ['Processed', 'Remaining'], datasets: [{ data: [data.progress * 100, 100 - data.progress * 100], backgroundColor: ['#4CAF50', '#FF9800'] }] }
+            apiDot.className = `connection-dot ${api ? 'conn-success' : 'conn-error'}`;
+            apiText.innerText = api ? "API ✓" : "API ✗";
+            
+            redisDot.className = `connection-dot ${redis ? 'conn-success' : 'conn-error'}`;
+            redisText.innerText = redis ? "Redis ✓" : "Redis ✗";
+        }
+
+        // Health check polling
+        async function checkHealth() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                updateConnection(data.api_connected, data.redis_connected);
+            } catch (error) {
+                updateConnection(false, false);
+            }
+        }
+
+        // Start health checks
+        setInterval(checkHealth, 5000);
+        checkHealth();
+
+        // Speed slider update
+        document.getElementById("speed").addEventListener("input", (e) => {
+            document.getElementById("speedValue").innerText = e.target.value + "x";
+        });
+
+        // Start Replay Button
+        document.getElementById("btnStart").onclick = async () => {
+            if (running) return;
+            
+            const btnStart = document.getElementById("btnStart");
+            const startSpinner = document.getElementById("startSpinner");
+            const btnStop = document.getElementById("btnStop");
+            
+            btnStart.disabled = true;
+            startSpinner.classList.remove("d-none");
+            
+            try {
+                const mode = document.getElementById("mode").value;
+                const response = await fetch('/api/replay/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode })
                 });
-            } else {
-                chart.data.datasets[0].data = [data.progress * 100, 100 - data.progress * 100];
-                chart.update();
+                
+                if (!response.ok) throw new Error('Failed to start replay');
+                
+                const data = await response.json();
+                currentReplayId = data.replay_id;
+                document.getElementById("currentReplayId").innerText = currentReplayId;
+                
+                running = true;
+                btnStop.disabled = false;
+                updateStatus("running", "Running");
+                showToast(`Replay started: ${currentReplayId}`, "bg-success");
+                
+                // Start local timer
+                startTime = Date.now();
+                timerInterval = setInterval(updateTimer, 1000);
+                
+            } catch (error) {
+                showToast("Error: " + error.message, "bg-danger");
+                updateStatus("error", "Error");
+            } finally {
+                btnStart.disabled = false;
+                startSpinner.classList.add("d-none");
             }
+        };
+
+        // Stop Replay Button
+        document.getElementById("btnStop").onclick = async () => {
+            if (!running) return;
             
-            // Load report
-            const reportResp = await fetch(`/report/${currentReplayId}`);
-            if (reportResp.ok) {
-                const report = await reportResp.json();
-                document.getElementById('report').innerHTML = `<h3>Report for ${currentReplayId}</h3><pre>${JSON.stringify(report, null, 2)}</pre>`;
+            if (!confirm("Are you sure you want to stop the replay?")) return;
+            
+            const btnStop = document.getElementById("btnStop");
+            btnStop.disabled = true;
+            
+            try {
+                const response = await fetch('/api/replay/stop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ replay_id: currentReplayId })
+                });
+                
+                if (!response.ok) throw new Error('Failed to stop replay');
+                
+                running = false;
+                updateStatus("idle", "Stopped");
+                showToast("Replay stopped", "bg-warning");
+                clearInterval(timerInterval);
+                
+            } catch (error) {
+                showToast("Error: " + error.message, "bg-danger");
+            }
+        };
+
+        // Clear Log Button
+        document.getElementById("btnClearLog").onclick = () => {
+            document.getElementById("eventLog").innerHTML = '<div class="text-muted text-center py-5"><i class="fa fa-info-circle me-2"></i>Log cleared</div>';
+        };
+
+        // Clear Button
+        document.getElementById("btnClear").onclick = () => {
+            document.getElementById("eventLog").innerHTML = "";
+            showToast("Logs cleared", "bg-info");
+        };
+
+        // Export Button
+        document.getElementById("btnExport").onclick = async () => {
+            try {
+                const response = await fetch('/api/export');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `replay_report_${Date.now()}.json`;
+                a.click();
+                showToast("Report exported", "bg-success");
+            } catch (error) {
+                showToast("Export failed", "bg-danger");
+            }
+        };
+
+        // Reset Button
+        document.getElementById("btnReset").onclick = () => {
+            if (confirm("Reset dashboard? This will reload the page.")) {
+                location.reload();
+            }
+        };
+
+        // Update local timer
+        function updateTimer() {
+            if (startTime) {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                document.getElementById("elapsed").innerText = elapsed + "s";
             }
         }
+
+        // Global for count sync
+// Track previous event to prevent duplicates
+let prevEventStr = "";
+
+socket.on("update", (data) => {
+    const progress = Math.min(Math.round(data.progress * 100), 100);
+    document.getElementById("barProgress").style.width = progress + "%";
+    document.getElementById("barProgress").innerText = progress + "%";
+    document.getElementById("progressPercent").innerText = progress;
+    
+    const currentProcessed = data.events_processed || 0;
+    document.getElementById("eventsProcessed").innerText = currentProcessed;
+    document.getElementById("bugs").innerText = data.bugs_detected || 0;
+    
+    // Update elapsed time
+    const elapsed = data.elapsed || 0;
+    document.getElementById("elapsedTime").innerText = elapsed + "s";
+    
+    // FIXED: Add to log if event exists AND is different from previous
+    if (data.current_event && 
+        data.current_event !== 'Unknown' && 
+        data.current_event !== 'Processing...' &&
+        data.current_event !== prevEventStr) {
+        
+        addEventToLog(data.current_event, data.event_type || 'info');
+        prevEventStr = data.current_event;
+        
+        console.log(`✅ Added event ${currentProcessed}: ${data.current_event}`);
+    }
+    
+    // Auto-scroll to bottom
+    const log = document.getElementById("eventLog");
+    log.scrollTop = log.scrollHeight;
+});
+
+        socket.on("completed", () => {
+            running = false;
+            updateStatus("completed", "Completed");
+            document.getElementById("btnStop").disabled = true;
+            document.getElementById("barProgress").style.width = "100%";
+            document.getElementById("barProgress").innerText = "100%";
+            document.getElementById("progressPercent").innerText = "100";
+            showToast("🎉 Replay completed successfully!", "bg-info");
+            clearInterval(timerInterval);
+            loadSessionHistory();
+        });
+
+        socket.on("error", (data) => {
+            running = false;
+            updateStatus("error", "Error");
+            showToast("Error: " + data.message, "bg-danger");
+            clearInterval(timerInterval);
+        });
+
+// Add event to log – deterministic chronological order (oldest first)
+function addEventToLog(eventId, type) {
+    const log = document.getElementById("eventLog");
+    const div = document.createElement("div");
+    const timestamp = new Date().toLocaleTimeString();
+
+    // ---- icon / colour handling ------------------------------------------------
+    let className = "event-success";
+    let icon = "fa-check-circle";
+
+    if (type === "error") {
+        className = "event-error";
+        icon = "fa-times-circle";
+    } else if (type === "warning") {
+        className = "event-warning";
+        icon = "fa-exclamation-triangle";
+    }
+
+    // ---- build the line --------------------------------------------------------
+    div.className = className;
+    div.innerHTML = `<i class="fa ${icon} me-2"></i>[${timestamp}] Event: ${eventId}`;
+
+    // ---- APPEND → chronological order -----------------------------------------
+    log.appendChild(div);                    
+
+    // ---- keep only the newest 20 entries (remove oldest) ----------------------
+    while (log.children.length > 20) {
+        log.removeChild(log.firstChild);      
+    }
+}
+
+        // Load session history
+        async function loadSessionHistory() {
+            try {
+                const response = await fetch('/api/replay/history');
+                const data = await response.json();
+                const container = document.getElementById("sessionHistory");
+                
+                if (data.sessions && data.sessions.length > 0) {
+                    container.innerHTML = data.sessions.map(session => `
+                        <div class="session-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="fw-bold text-info">${session.replay_id}</div>
+                                    <small class="text-muted">${session.timestamp}</small>
+                                </div>
+                                <div class="text-end">
+                                    <div style="color: #e2e8f0;">${session.events} events</div>
+                                    <small class="text-success">${session.duration}</small>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error("Failed to load history:", error);
+            }
+        }
+
+        // Load history on page load
+        loadSessionHistory();
     </script>
 </body>
 </html>

@@ -7,7 +7,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Dict, List, Optional, Tuple, Any
-import redis.asyncio as redis # pyright: ignore[reportMissingImports]
+import redis.asyncio as redis  # pyright: ignore[reportMissingImports]
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -106,6 +106,68 @@ class RedisStreamAdapter:
         except Exception as e:
             logger.error(f"Failed to get stream info: {e}")
             return {"length": 0, "error": str(e)}
+    
+    async def read_events(self, start_ts=None, end_ts=None, count=100):
+        """
+        Read events from Redis stream for replay (FIXED - Ensure connection + Parse payload).
+        
+        Args:
+            start_ts: Start timestamp (optional, for filtering)
+            end_ts: End timestamp (optional, for filtering)
+            count: Number of events to read (default 100)
+        
+        Returns:
+            List of event dictionaries
+        """
+        try:
+            # CRITICAL FIX: Ensure Redis client is connected
+            if self.redis_client is None:
+                logger.warning("Redis client not connected, connecting now...")
+                await self.connect()
+            
+            # Use read_messages_by_range to get events in deterministic order
+            messages = await self.read_messages_by_range(
+                start_id="0",
+                end_id="+",
+                count=count
+            )
+            
+            events = []
+            for msg in messages:
+                # Parse the 'payload' field which contains nested JSON
+                payload_str = msg.fields.get('payload', '{}')
+                try:
+                    payload = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse payload JSON for event {msg.stream_id}")
+                    continue
+                
+                # Extract fields from parsed payload
+                event = {
+                    'event_id': msg.fields.get('event_id', msg.stream_id),
+                    'timestamp': payload.get('timestamp', msg.timestamp.isoformat()),
+                    'method': payload.get('method', 'GET'),
+                    'path': payload.get('path', '/'),
+                    'status': int(payload.get('status', 200)) if payload.get('status') else 200,
+                    'message': payload.get('message', ''),
+                    'level': payload.get('level', 'INFO'),
+                    'source': payload.get('source', 'unknown'),
+                    'ip': payload.get('ip', ''),
+                    'user_agent': payload.get('user_agent', ''),
+                    'request_body': payload.get('request_body', ''),
+                    'response_time': float(payload.get('response_time', 0)) if payload.get('response_time') else 0.0,
+                    'host': payload.get('host', ''),
+                    'body_bytes': int(payload.get('body_bytes', 0)) if payload.get('body_bytes') else 0,
+                }
+                
+                events.append(event)
+            
+            logger.info(f"Read {len(events)} events for replay from Redis stream")
+            return events
+            
+        except Exception as e:
+            logger.error(f"Failed to read events from stream: {e}", exc_info=True)
+            return []
     
     async def read_new_messages(self) -> List[StreamMessage]:
         """
@@ -323,9 +385,9 @@ class RedisStreamAdapter:
             return {"name": self.consumer_name, "error": str(e)}
     
     async def consume_messages(
-            self,
-            timeout: Optional[int] = None
-        ) -> AsyncGenerator[StreamMessage, None]:
+        self,
+        timeout: Optional[int] = None
+    ) -> AsyncGenerator[StreamMessage, None]:
         """
         Continuously consume messages from the stream
         
